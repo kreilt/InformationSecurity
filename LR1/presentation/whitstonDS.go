@@ -67,7 +67,7 @@ func splitByTwoRunes(line string) [][]rune {
 func randMatrix() [][]rune {
 	a := []rune(alphabet)    //преобразуем алфавит в []rune
 	if len(a) != rows*cols { //проверяем размерность
-		fmt.Fprintf(os.Stderr, "Неверное количество симовлов в алфавите")
+		panic("Неверное количество символов в алфавите")
 	}
 
 	rand.Shuffle(len(a), func(i, j int) { //перемешиваем алфавит с помощью свапа каждого символа с рандомным
@@ -127,7 +127,8 @@ func coder(bigram []rune, m1, m2 [][]rune) []rune {
 		}
 	}
 	if i1 == -1 || i2 == -1 || j1 == -1 || j2 == -1 { //проверяем заполнена ли память
-		fmt.Fprintf(os.Stderr, "Проблема шифрования")
+		fmt.Fprintln(os.Stderr, "Проблема шифрования: символа нет в алфавите")
+		os.Exit(1)
 	}
 	if i1 == i2 { //одна строка - прямоугольник вырождается, буквы остаются в своих алфавитах, но берут позиции друг друга
 		out[0], out[1] = m1[i1][j2], m2[i2][j1]
@@ -165,7 +166,8 @@ func decoder(bigram []rune, m1, m2 [][]rune) []rune {
 		}
 	}
 	if i1 == -1 || i2 == -1 || j1 == -1 || j2 == -1 || i1alter == -1 || j1alter == -1 || i2alter == -1 || j2alter == -1 { //проверяем заполнена ли память
-		fmt.Fprintf(os.Stderr, "Проблема шифрования")
+		fmt.Fprintln(os.Stderr, "Проблема расшифрования: символа нет в алфавите")
+		os.Exit(1)
 	}
 	if i1alter == i2alter { //строки совпали при обратном чтении - предполагаем, что при шифровании была вырожденная ветка (угадывает не всегда)
 		out[0], out[1] = m1[i1alter][j2alter], m2[i2alter][j1alter]

@@ -66,7 +66,7 @@ func splitByTwoRunes(line string) [][]rune {
 func randMatrix() [][]rune {
 	a := []rune(alphabet)    //преобразуем алфавит в []rune
 	if len(a) != rows*cols { //проверяем размерность
-		fmt.Fprintf(os.Stderr, "Неверное количество симовлов в алфавите")
+		panic("Неверное количество символов в алфавите")
 	}
 
 	rand.Shuffle(len(a), func(i, j int) { //перемешиваем алфавит с помощью свапа каждого символа с рандомным
@@ -126,7 +126,8 @@ func coder(bigram []rune, m1, m2 [][]rune) []rune {
 		}
 	}
 	if i1 == -1 || i2 == -1 || j1 == -1 || j2 == -1 { //проверяем заполнена ли память
-		fmt.Fprintf(os.Stderr, "Проблема шифрования")
+		fmt.Fprintln(os.Stderr, "Проблема шифрования: символа нет в алфавите")
+		os.Exit(1)
 	}
 	if i1 == i2 { //одна строка - прямоугольник вырождается, двигаем столбцы на 1 вправо по кругу
 		out[0], out[1] = m2[i1][(j1+1)%cols], m1[i2][(j2+1)%cols]
@@ -153,7 +154,8 @@ func decoder(bigram []rune, m1, m2 [][]rune) []rune {
 		}
 	}
 	if i1 == -1 || i2 == -1 { //проверяем заполнена ли память
-		fmt.Fprintf(os.Stderr, "Проблема расшифрования")
+		fmt.Fprintln(os.Stderr, "Проблема расшифрования: символа нет в алфавите")
+		os.Exit(1)
 	}
 
 	out := make([]rune, 2)
