@@ -27,7 +27,7 @@ func main() {
 
 	m1 := randMatrix()
 	m2 := randMatrix()
-	m1, m2 = refMatrices()
+	//m1, m2 = refMatrices()
 	printMatrices(m1, m2)
 
 	fmt.Println("\nШИФРУЕМ")
