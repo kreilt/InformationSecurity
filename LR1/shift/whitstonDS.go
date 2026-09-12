@@ -14,149 +14,158 @@ const (
 	alphabet = "АБВГДЕЖЗИКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ.,: "
 )
 
+// замена невалидных символов
 var replacer = strings.NewReplacer(
-	"Ё", "Е",
-	"Й", "И",
+	"Ё", "Е", //замена Ё на Е
+	"Й", "И", //Й на И и так далее
 	"\t", " ",
 	"\r", "",
 	"\n", "",
 )
 
 func main() {
-	bigrams := splitByTwoRunes(input())
+	bigrams := splitByTwoRunes(input()) //принимает строку и сразу делим ее на биграммы
 
-	m1 := randMatrix()
+	m1 := randMatrix() //создаем 2 рандомных алфавита
 	m2 := randMatrix()
-	//m1, m2 = refMatrices()
-	printMatrices(m1, m2)
+	//m1, m2 = refMatrices() //алфавиты из презентации
+	printMatrices(m1, m2) //выводим алфавиты
 
 	fmt.Println("\nШИФРУЕМ")
-	encrypted := handlerCoder(bigrams, m1, m2)
+	encrypted := handlerCoder(bigrams, m1, m2) //шифруем биграммы
 
 	fmt.Println("\nРАСШИФРОВЫВАЕМ")
-	handlerDecoder(encrypted, m1, m2)
+	handlerDecoder(encrypted, m1, m2) //расшифровываем биграммы
 }
 
+// чтение ввода
 func input() string {
-	reader := bufio.NewReader(os.Stdin)
-	line, err := reader.ReadString('\n')
-	if err != nil && line == "" {
+	reader := bufio.NewReader(os.Stdin)  // читаем ввод
+	line, err := reader.ReadString('\n') //берем строку с ошибку чтения
+	if err != nil && line == "" {        //если строка пустая или ошибка не пустая, кидаем ошибку
 		fmt.Fprintf(os.Stderr, "ошибка чтения строки: %v\n", err)
 	}
 	return line
 }
 
+// разделение строки на руны
 func splitByTwoRunes(line string) [][]rune {
-	line = replacer.Replace(strings.ToUpper(line))
-	rs := []rune(line)
-	if len(rs)%2 != 0 {
+	line = replacer.Replace(strings.ToUpper(line)) //преобразуем строку в единный формат
+	rs := []rune(line)                             //приводим к типу []rune
+	if len(rs)%2 != 0 {                            //если длина нечетная добавляем пробел в конец
 		rs = append(rs, ' ')
 	}
 	res := make([][]rune, 0, len(rs)/2)
-	for i := 0; i < len(rs); i += 2 {
+	for i := 0; i < len(rs); i += 2 { //идем по строке и заполняем массив рун
 		res = append(res, rs[i:i+2])
 	}
 	return res
 }
 
+// рандомная матрица по алфавиту
 func randMatrix() [][]rune {
-	a := []rune(alphabet)
-	if len(a) != rows*cols {
-		panic("Неверное количество симовлов в алфавите")
+	a := []rune(alphabet)    //преобразуем алфавит в []rune
+	if len(a) != rows*cols { //проверяем размерность
+		fmt.Fprintf(os.Stderr, "Неверное количество симовлов в алфавите")
 	}
 
-	rand.Shuffle(len(a), func(i, j int) {
+	rand.Shuffle(len(a), func(i, j int) { //перемешиваем алфавит с помощью свапа каждого символа с рандомным
 		a[i], a[j] = a[j], a[i]
 	})
 
-	m := make([][]rune, rows)
+	m := make([][]rune, rows) //создаем матрицу
 	for i := range m {
 		m[i] = make([]rune, cols)
-		copy(m[i], a[i*cols:(i+1)*cols])
+		copy(m[i], a[i*cols:(i+1)*cols]) //копируем символ из алфавита в матрицу
 	}
 
 	return m
 }
 
+// обработчик шифровщика
 func handlerCoder(bigrams [][]rune, m1, m2 [][]rune) [][]rune {
 
 	out := make([][]rune, 0, len(bigrams))
-	for _, bg := range bigrams {
-		c := coder(bg, m1, m2)
-		out = append(out, c)
-		fmt.Printf("%q ", string(c))
+	for _, bg := range bigrams { //берем каждую биграмму
+		c := coder(bg, m1, m2)       //отправляем в коде
+		out = append(out, c)         //добавляем в результирующий массив
+		fmt.Printf("%q ", string(c)) //выводим
 	}
 	fmt.Println()
 	return out
 }
 
+// обработчик расшифровщика
 func handlerDecoder(bigrams [][]rune, m1, m2 [][]rune) [][]rune {
 
 	out := make([][]rune, 0, len(bigrams))
-	for _, bg := range bigrams {
-		c := decoder(bg, m1, m2)
-		out = append(out, c)
-		fmt.Printf("%q ", string(c))
+	for _, bg := range bigrams { //берем каждую биграмму
+		c := decoder(bg, m1, m2)     //отправляем в декодер
+		out = append(out, c)         //добавляем в результирующий массив
+		fmt.Printf("%q ", string(c)) //выводим
 	}
 	fmt.Println()
 	return out
 }
 
+// кодер рун
 func coder(bigram []rune, m1, m2 [][]rune) []rune {
-	var i1, j1 int = -1, -1
+	var i1, j1 int = -1, -1 //объясвляем переменные для памяти позиций
 	var i2, j2 int = -1, -1
 	out := make([]rune, 2)
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			if bigram[0] == m1[i][j] {
-				i1 = i
+			if bigram[0] == m1[i][j] { //ищем 1 символ биграммы в 1 алфавите
+				i1 = i //запоминаем позиции
 				j1 = j
 			}
-			if bigram[1] == m2[i][j] {
-				i2 = i
+			if bigram[1] == m2[i][j] { //ищем 2 символ биграммы во 2 алфавите
+				i2 = i //запоминаем позиции
 				j2 = j
 			}
 		}
 	}
-	if i1 == -1 || i2 == -1 || j1 == -1 || j2 == -1 {
-		panic("Проблема шифрования")
+	if i1 == -1 || i2 == -1 || j1 == -1 || j2 == -1 { //проверяем заполнена ли память
+		fmt.Fprintf(os.Stderr, "Проблема шифрования")
 	}
-	if i1 == i2 {
+	if i1 == i2 { //одна строка - прямоугольник вырождается, двигаем столбцы на 1 вправо по кругу
 		out[0], out[1] = m2[i1][(j1+1)%cols], m1[i2][(j2+1)%cols]
 	} else {
-		out[0], out[1] = m2[i1][j2], m1[i2][j1]
+		out[0], out[1] = m2[i1][j2], m1[i2][j1] // буквы шифртекста — две оставшиеся вершины мнимого прямоугольника
 	}
 	return out
 }
 
+// декодер рун
 func decoder(bigram []rune, m1, m2 [][]rune) []rune {
-	var i1, j1 int = -1, -1
+	var i1, j1 int = -1, -1 //объясвляем переменные для памяти позиций
 	var i2, j2 int = -1, -1
 	for i := 0; i < rows; i++ {
 		for j := 0; j < cols; j++ {
-			if bigram[0] == m2[i][j] {
-				i1 = i
+			if bigram[0] == m2[i][j] { //ищем 1 символ биграммы во 2 алфавите
+				i1 = i //запоминаем позиции
 				j1 = j
 			}
-			if bigram[1] == m1[i][j] {
-				i2 = i
+			if bigram[1] == m1[i][j] { //ищем 2 символ биграммы в 1 алфавите
+				i2 = i //запоминаем позиции
 				j2 = j
 			}
 		}
 	}
-	if i1 == -1 || i2 == -1 {
-		panic("Проблема расшифрования")
+	if i1 == -1 || i2 == -1 { //проверяем заполнена ли память
+		fmt.Fprintf(os.Stderr, "Проблема расшифрования")
 	}
 
 	out := make([]rune, 2)
-	if i1 == i2 {
+	if i1 == i2 { //одна строка - при шифровании был сдвиг, откатываем столбцы на 1 влево (+cols чтобы индекс не ушел в минус)
 		out[0], out[1] = m1[i1][(j1-1+cols)%cols], m2[i2][(j2-1+cols)%cols]
 	} else {
-		out[0], out[1] = m1[i1][j2], m2[i2][j1]
+		out[0], out[1] = m1[i1][j2], m2[i2][j1] // буквы открытого текста — две оставшиеся вершины мнимого прямоугольника
 	}
 	return out
 }
 
+// принт матриц-алфавитов
 func printMatrices(m1, m2 [][]rune) {
 	fmt.Println("   Алфавит №1     Алфавит №2")
 	for i := 0; i < rows; i++ {
@@ -169,6 +178,7 @@ func printMatrices(m1, m2 [][]rune) {
 	fmt.Println()
 }
 
+// принт строки
 func printRow(row []rune) {
 	for _, r := range row {
 		if r == ' ' {
@@ -179,6 +189,7 @@ func printRow(row []rune) {
 	}
 }
 
+// матрицы из презентации
 func refMatrices() ([][]rune, [][]rune) {
 	parse := func(rowsStr []string) [][]rune {
 		m := make([][]rune, rows)
