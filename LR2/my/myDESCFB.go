@@ -150,13 +150,13 @@ func input() string {
 	return strings.TrimRight(line, "\r\n") //убираем перевод строки
 }
 
-func encrypt(block uint64) uint64 {
+func encrypt(block uint64, keys []uint64) uint64 {
 	t0 := permute(block, IP, 64)
 	l := uint32(t0 >> 32)
 	r := uint32(t0)
 
 	for i := 0; i < 16; i++ {
-		l, r := r, l^f(r, k[i])
+		l, r := r, l^f(r, keys[i])
 	}
 	permute(uint64(r<<32)|uint64(l), IPInv, 64)
 }
@@ -175,6 +175,19 @@ func permute(in uint64, table []int, inBits int) uint64 {
 }
 
 func f(r uint32, k uint64) uint32 {
-	e := permute(uint64(r), E, 32)
+	x := permute(uint64(r), E, 32) ^ k
 
+}
+
+func genSeancesKeys(key uint64) [16]uint64 {
+	g := permute(key, G, 64)
+	c := uint32(g >> 28)
+	d := uint32(g & 0x0FFFFFFF)
+	var keys [16]uint64
+	for i := 0; i < 16; i++ {
+		c = (c<<uint32(shifts[i]) | c>>(28-shifts[i])) & 0x0FFFFFFF //сдвиги накапливаются от раунда к раунду
+		d = (d<<uint32(shifts[i]) | d>>(28-shifts[i])) & 0x0FFFFFFF
+		keys[i] = permute(uint64(c)<<28|uint64(d), H, 56)
+	}
+	return keys
 }
