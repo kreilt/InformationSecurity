@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"strings"
@@ -136,7 +138,27 @@ var S = [8][4][16]uint8{
 
 func main() {
 	buf := input()
+	iv := rand64()
+	key := rand64()
+	seancesKeys := genSeancesKeys(key)
+	cfb([]byte(buf), iv, seancesKeys, true)
 
+	fmt.Println("\nШИФРУЕМ")
+	encrypted := cfb([]byte(buf), iv, seancesKeys, false)
+	fmt.Printf("% X\n", encrypted)
+
+	fmt.Println("\nРАСШИФРОВЫВАЕМ")
+	decrypted := cfb(encrypted, iv, seancesKeys, true)
+	fmt.Println(string(decrypted))
+}
+
+func rand64() uint64 {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		fmt.Fprintln(os.Stderr, "ошибка генератора случайных чисел:", err)
+		os.Exit(1)
+	}
+	return binary.BigEndian.Uint64(b[:])
 }
 
 // чтение ввода
@@ -150,15 +172,16 @@ func input() string {
 	return strings.TrimRight(line, "\r\n") //убираем перевод строки
 }
 
-func encrypt(block uint64, keys []uint64) uint64 {
+func encrypt(block uint64, keys [16]uint64) uint64 {
 	t0 := permute(block, IP, 64)
 	l := uint32(t0 >> 32)
 	r := uint32(t0)
 
 	for i := 0; i < 16; i++ {
-		l, r := r, l^f(r, keys[i])
+		l, r = r, l^f(r, keys[i])
 	}
-	permute(uint64(r<<32)|uint64(l), IPInv, 64)
+
+	return permute(uint64(r)<<32|uint64(l), IPInv, 64)
 }
 
 // перестановка битов по таблице
@@ -176,7 +199,14 @@ func permute(in uint64, table []int, inBits int) uint64 {
 
 func f(r uint32, k uint64) uint32 {
 	x := permute(uint64(r), E, 32) ^ k
-
+	var out uint32
+	for i := 0; i < 8; i++ {
+		six := (x >> (42 - 6*i)) & 0x3F
+		row := ((six>>5)&1)<<1 | (six & 1)
+		col := ((six >> 1) & 0x0F)
+		out = out<<4 | uint32(S[i][row][col])
+	}
+	return uint32(permute(uint64(out), P, 32))
 }
 
 func genSeancesKeys(key uint64) [16]uint64 {
@@ -185,9 +215,33 @@ func genSeancesKeys(key uint64) [16]uint64 {
 	d := uint32(g & 0x0FFFFFFF)
 	var keys [16]uint64
 	for i := 0; i < 16; i++ {
-		c = (c<<uint32(shifts[i]) | c>>(28-shifts[i])) & 0x0FFFFFFF //сдвиги накапливаются от раунда к раунду
+		c = (c<<uint32(shifts[i]) | c>>(28-shifts[i])) & 0x0FFFFFFF
 		d = (d<<uint32(shifts[i]) | d>>(28-shifts[i])) & 0x0FFFFFFF
 		keys[i] = permute(uint64(c)<<28|uint64(d), H, 56)
 	}
 	return keys
+}
+
+func cfb(text []byte, iv uint64, keys [16]uint64, decrypt bool) []byte {
+	out := make([]byte, len(text))
+	feedback := iv
+
+	for i := 0; i < len(text); i += 8 {
+		var gamma [8]byte
+		binary.BigEndian.PutUint64(gamma[:], encrypt(feedback, keys))
+
+		n := min(8, len(text)-i)
+		for j := 0; j < n; j++ {
+			out[i+j] = text[i+j] ^ gamma[j]
+		}
+
+		var next [8]byte
+		if decrypt {
+			copy(next[:], text[i:i+n])
+		} else {
+			copy(next[:], out[i:i+n])
+		}
+		feedback = binary.BigEndian.Uint64(next[:])
+	}
+	return out
 }
