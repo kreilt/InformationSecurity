@@ -137,29 +137,37 @@ var S = [8][4][16]uint8{
 }
 
 func main() {
-	if selfTest() { //сверяем DES с эталонным примером
-		fmt.Println("Проверка DES на эталонном векторе: ok")
-	} else {
-		fmt.Println("Проверка DES на эталонном векторе: ОШИБКА")
+	checkKeys := genSessionKeys(0x133457799BBCDFF1)                      //сеансовые ключи для проверки работы (пример со слайда)
+	if desEncrypt(0x0123456789ABCDEF, checkKeys) != 0x85E813540F0AB405 { //проверяем шифровку с результатов
+		fmt.Fprintln(os.Stderr, "ошибка механизма шифрования")
 		os.Exit(1)
 	}
 
-	text := input() //читаем строку
+	buf := input()                     //читаем инпут
+	iv := rand64()                     //генерируем вектор инициализации
+	key := rand64()                    //генерируем ключ
+	sessionKeys := genSessionKeys(key) //генерируем сеансовые ключи (16 штук) из рандомного ключа
 
-	key := randomBlock() //случайный ключ, 64 бита
-	iv := randomBlock()  //случайный вектор инициализации, 64 бита
-	keys := keySchedule(key)
-
-	fmt.Printf("Ключ:                 %016X\n", key)
-	fmt.Printf("Вектор инициализации: %016X\n", iv)
+	fmt.Printf("KEY: %016X\n", key)
+	fmt.Printf("IV: %016X\n", iv)
 
 	fmt.Println("\nШИФРУЕМ")
-	encrypted := cfb([]byte(text), keys, iv, false)
-	fmt.Printf("% X\n", encrypted) //шифртекст — байты, выводим в шестнадцатеричном виде
+	encrypted := cfb([]byte(buf), iv, sessionKeys, false) //шифруем текст в по CFB
+	fmt.Printf("% X\n", encrypted)                        //выводим в шестнадцатеричном виде, так как шифртекст - байты
 
 	fmt.Println("\nРАСШИФРОВЫВАЕМ")
-	decrypted := cfb(encrypted, keys, iv, true)
+	decrypted := cfb(encrypted, iv, sessionKeys, true) // расшифровываем также как шифровали, только кладем зашифрованный текст, вместо исходного
 	fmt.Println(string(decrypted))
+}
+
+// генератор случайных 64 бит
+func rand64() uint64 {
+	var b [8]byte                              //для генерации потребуется срез байт
+	if _, err := rand.Read(b[:]); err != nil { //через rand.Read генерируем
+		fmt.Fprintln(os.Stderr, "ошибка генератора случайных чисел:", err)
+		os.Exit(1)
+	}
+	return binary.BigEndian.Uint64(b[:]) //преобразуем в uint64 и возвращаем
 }
 
 // чтение ввода
@@ -173,14 +181,17 @@ func input() string {
 	return strings.TrimRight(line, "\r\n") //убираем перевод строки
 }
 
-// 64 случайных бита из криптографического генератора ОС
-func randomBlock() uint64 {
-	var b [8]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		fmt.Fprintln(os.Stderr, "ошибка генератора случайных чисел:", err)
-		os.Exit(1)
+// шифроваие блока в 64 бит
+func desEncrypt(block uint64, keys [16]uint64) uint64 {
+	t0 := permute(block, IP, 64) //начальная перестановка IP
+	l := uint32(t0 >> 32)        //смещаем биты вправо на половину, получаем L0 - первую левую половину - старшие 32 бита
+	r := uint32(t0)              //R0 - первая правая половина
+
+	for i := 0; i < 16; i++ { //бежим по 16 раудам Фейстеля
+		l, r = r, l^f(r, keys[i]) //новая левая половина = правой, новая правая = старой левой XOR функция от правой и ключа
 	}
-	return binary.BigEndian.Uint64(b[:])
+
+	return permute(uint64(r)<<32|uint64(l), IPInv, 64) //конечная перестановка IPInv
 }
 
 // перестановка битов по таблице
@@ -188,91 +199,63 @@ func randomBlock() uint64 {
 // результат содержит столько бит, сколько чисел в таблице
 func permute(in uint64, table []int, inBits int) uint64 {
 	var out uint64
-	for _, pos := range table {
+	for _, pos := range table { // бежим по таблице
 		bit := (in >> (inBits - pos)) & 1 //достаем бит номер pos
 		out = out<<1 | bit                //дописываем его справа
 	}
 	return out
 }
 
-// циклический сдвиг 28-битного числа влево на n
-func rotl28(x uint32, n int) uint32 {
-	return (x<<n | x>>(28-n)) & 0x0FFFFFFF //маска оставляет только 28 бит
+// функция раунда f: 32 бита правой половины и 48 бит сеансового ключа дают 32 бита
+func f(r uint32, k uint64) uint32 {
+	x := permute(uint64(r), E, 32) ^ k //расширяем 32 бита до 48 и XORим с сеансовым ключом
+	var out uint32
+	for i := 0; i < 8; i++ { //48 бит режем на 8 кусков по 6 бит
+		six := (x >> (42 - 6*i)) & 0x3F       //i-я шестерка бит, слева направо
+		row := ((six>>5)&1)<<1 | (six & 1)    //крайние биты шестерки дают номер строки
+		col := ((six >> 1) & 0x0F)            //средние четыре бита дают номер столбца
+		out = out<<4 | uint32(S[i][row][col]) //S-блок отдает 4 бита, всего выйдет 32
+	}
+	return uint32(permute(uint64(out), P, 32)) //перемешиваем результат перестановкой P
 }
 
 // вычисление 16 сеансовых ключей по 48 бит
-func keySchedule(key uint64) [16]uint64 {
-	cd := permute(key, G, 64)    //64 -> 56 бит, биты четности отброшены
-	c := uint32(cd >> 28)        //левая половина C0, 28 бит
-	d := uint32(cd & 0x0FFFFFFF) //правая половина D0, 28 бит
-
+func genSessionKeys(key uint64) [16]uint64 {
+	g := permute(key, G, 64)    //64 бита ключа сжимаем до 56, биты четности отбрасываются
+	c := uint32(g >> 28)        //левая половина C0, 28 бит
+	d := uint32(g & 0x0FFFFFFF) //правая половина D0, 28 бит
 	var keys [16]uint64
 	for i := 0; i < 16; i++ {
-		c = rotl28(c, shifts[i]) //сдвиги накапливаются от раунда к раунду
-		d = rotl28(d, shifts[i])
-		keys[i] = permute(uint64(c)<<28|uint64(d), H, 56) //56 -> 48 бит
+		//циклический сдвиг влево, маска оставляет 28 бит и возвращает уехавшее за край справа
+		c = (c<<uint32(shifts[i]) | c>>(28-shifts[i])) & 0x0FFFFFFF //сдвиги накапливаются от раунда к раунду
+		d = (d<<uint32(shifts[i]) | d>>(28-shifts[i])) & 0x0FFFFFFF
+		keys[i] = permute(uint64(c)<<28|uint64(d), H, 56) //склеиваем половины и сжимаем 56 бит до 48 перестановкой H
 	}
 	return keys
 }
 
-// функция f раунда: 32 бита правой половины + 48 бит ключа -> 32 бита
-func f(r uint32, k uint64) uint32 {
-	x := permute(uint64(r), E, 32) ^ k //расширение 32 -> 48 и XOR с сеансовым ключом
+// режим "обратная связь по шифру"
+// открытый текст в DES не попадает: DES шифрует регистр и вырабатывает гамму
+func cfb(text []byte, iv uint64, keys [16]uint64, decrypt bool) []byte {
+	out := make([]byte, len(text))
+	feedback := iv //регистр обратной связи, в начале - вектор инициализации
 
-	var out uint32
-	for i := 0; i < 8; i++ {
-		six := (x >> (42 - 6*i)) & 0x3F       //i-я шестерка бит, слева направо
-		row := (six>>4)&0b10 | six&1          //крайние биты — номер строки
-		col := (six >> 1) & 0xF               //средние четыре бита — номер столбца
-		out = out<<4 | uint32(S[i][row][col]) //S-блок выдает 4 бита: 48 -> 32
-	}
-	return uint32(permute(uint64(out), P, 32))
-}
-
-// шифрование одного 64-битного блока
-func encryptBlock(block uint64, keys [16]uint64) uint64 {
-	b := permute(block, IP, 64) //начальная перестановка
-	l := uint32(b >> 32)        //левая половина L0
-	r := uint32(b)              //правая половина R0
-
-	for i := 0; i < 16; i++ {
-		l, r = r, l^f(r, keys[i]) //раунд Фейстеля
-	}
-
-	// после 16-го раунда половины идут в обратном порядке: R16 L16
-	return permute(uint64(r)<<32|uint64(l), IPInv, 64)
-}
-
-// режим CFB
-// при расшифровании используется та же процедура шифрования DES
-func cfb(src []byte, keys [16]uint64, iv uint64, decrypt bool) []byte {
-	out := make([]byte, len(src))
-	feedback := iv //регистр обратной связи, в начале — вектор инициализации
-
-	for i := 0; i < len(src); i += 8 {
+	for i := 0; i < len(text); i += 8 { //идем по тексту блоками по 8 байт
 		var gamma [8]byte
-		binary.BigEndian.PutUint64(gamma[:], encryptBlock(feedback, keys)) //гамма = DES(регистр)
+		binary.BigEndian.PutUint64(gamma[:], desEncrypt(feedback, keys)) //преобразуем то что дал des с регистром обратной связи в формат под gamma - в байты
 
-		n := min(8, len(src)-i) //последний блок может быть короче 8 байт
-		for j := 0; j < n; j++ {
-			out[i+j] = src[i+j] ^ gamma[j] //текст XOR гамма
+		n := min(8, len(text)-i) //последний блок м.б. короче, обрабатывает то, что есть
+		for j := 0; j < n; j++ { //идем по блокам
+			out[i+j] = text[i+j] ^ gamma[j] //XORим передаваемый в функцию текст и гамму(то что дал DES) получаем выходной текст
 		}
 
-		// в регистр всегда уходит шифртекст:
-		// при шифровании это результат, при расшифровании — вход
 		var next [8]byte
-		if decrypt {
-			copy(next[:], src[i:i+n])
+		if decrypt { //проверяем стоит ли флаг шифрования/расшифрования
+			copy(next[:], text[i:i+n]) //если да, то берем шифртекст из передаваемого в функцию значения
 		} else {
-			copy(next[:], out[i:i+n])
+			copy(next[:], out[i:i+n]) //иначе берем результат - шифртекст
 		}
-		feedback = binary.BigEndian.Uint64(next[:])
+		feedback = binary.BigEndian.Uint64(next[:]) //обновляем регистр обратной связи, передаем в него шифртекст
 	}
 	return out
-}
-
-// проверка на эталонном векторе из литературы по DES
-func selfTest() bool {
-	keys := keySchedule(0x133457799BBCDFF1)
-	return encryptBlock(0x0123456789ABCDEF, keys) == 0x85E813540F0AB405
 }
