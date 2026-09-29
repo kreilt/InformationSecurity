@@ -137,8 +137,8 @@ var S = [8][4][16]uint8{
 }
 
 func main() {
-	checkKeys := genSessionKeys(0x133457799BBCDFF1)                      //сеансовые ключи для проверки работы (пример со слайда)
-	if desEncrypt(0x0123456789ABCDEF, checkKeys) != 0x85E813540F0AB405 { //проверяем шифровку с результатов
+	checkKeys := genSessionKeys(0x133457799BBCDFF1)                      //сеансовые ключи для контрольного примера из литературы по DES
+	if desEncrypt(0x0123456789ABCDEF, checkKeys) != 0x85E813540F0AB405 { //сверяем результат DES с известным значением
 		fmt.Fprintln(os.Stderr, "ошибка механизма шифрования")
 		os.Exit(1)
 	}
@@ -152,17 +152,17 @@ func main() {
 	fmt.Printf("IV: %016X\n", iv)
 
 	fmt.Println("\nШИФРУЕМ")
-	encrypted := cfb([]byte(buf), iv, sessionKeys, false) //шифруем текст в по CFB
+	encrypted := cfb([]byte(buf), iv, sessionKeys, false) //шифруем текст в режиме CFB
 	fmt.Printf("% X\n", encrypted)                        //выводим в шестнадцатеричном виде, так как шифртекст - байты
 
 	fmt.Println("\nРАСШИФРОВЫВАЕМ")
-	decrypted := cfb(encrypted, iv, sessionKeys, true) // расшифровываем также как шифровали, только кладем зашифрованный текст, вместо исходного
+	decrypted := cfb(encrypted, iv, sessionKeys, true) // расшифровываем так же, как шифровали, только кладем зашифрованный текст, вместо исходного
 	fmt.Println(string(decrypted))
 }
 
 // генератор случайных 64 бит
 func rand64() uint64 {
-	var b [8]byte                              //для генерации потребуется срез байт
+	var b [8]byte                              //rand.Read заполняет байты, поэтому нужен буфер
 	if _, err := rand.Read(b[:]); err != nil { //через rand.Read генерируем
 		fmt.Fprintln(os.Stderr, "ошибка генератора случайных чисел:", err)
 		os.Exit(1)
@@ -174,20 +174,20 @@ func rand64() uint64 {
 func input() string {
 	reader := bufio.NewReader(os.Stdin)  // читаем ввод
 	line, err := reader.ReadString('\n') //берем строку с ошибкой чтения
-	if err != nil && line == "" {        //если строка пустая или ошибка не пустая, кидаем ошибку
+	if err != nil && line == "" {        //если строка пустая и ошибка не пустая, кидаем ошибку
 		fmt.Fprintln(os.Stderr, "ошибка чтения строки:", err)
 		os.Exit(1)
 	}
 	return strings.TrimRight(line, "\r\n") //убираем перевод строки
 }
 
-// шифроваие блока в 64 бит
+// шифрование блока в 64 бита
 func desEncrypt(block uint64, keys [16]uint64) uint64 {
 	t0 := permute(block, IP, 64) //начальная перестановка IP
 	l := uint32(t0 >> 32)        //смещаем биты вправо на половину, получаем L0 - первую левую половину - старшие 32 бита
 	r := uint32(t0)              //R0 - первая правая половина
 
-	for i := 0; i < 16; i++ { //бежим по 16 раудам Фейстеля
+	for i := 0; i < 16; i++ { //бежим по 16 раундам Фейстеля
 		l, r = r, l^f(r, keys[i]) //новая левая половина = правой, новая правая = старой левой XOR функция от правой и ключа
 	}
 

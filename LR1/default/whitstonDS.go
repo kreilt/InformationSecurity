@@ -25,8 +25,7 @@ var replacer = strings.NewReplacer(
 
 func main() {
 	bigrams := splitByTwoRunes(input()) //принимает строку и сразу делим ее на биграммы
-
-	m1 := randMatrix() //создаем 2 рандомных алфавита
+	m1 := randMatrix()                  //создаем 2 рандомных алфавита
 	m2 := randMatrix()
 	//m1, m2 = refMatrices() //алфавиты из презентации
 	printMatrices(m1, m2) //выводим алфавиты
@@ -41,8 +40,8 @@ func main() {
 // чтение ввода
 func input() string {
 	reader := bufio.NewReader(os.Stdin)  // читаем ввод
-	line, err := reader.ReadString('\n') //берем строку с ошибку чтения
-	if err != nil && line == "" {        //если строка пустая или ошибка не пустая, кидаем ошибку
+	line, err := reader.ReadString('\n') //берем строку с ошибкой чтения
+	if err != nil && line == "" {        //если строка пустая и ошибка не пустая, кидаем ошибку
 		fmt.Fprintf(os.Stderr, "ошибка чтения строки: %v\n", err)
 	}
 	return line
@@ -50,7 +49,7 @@ func input() string {
 
 // разделение строки на руны
 func splitByTwoRunes(line string) [][]rune {
-	line = replacer.Replace(strings.ToUpper(line)) //преобразуем строку в единный формат
+	line = replacer.Replace(strings.ToUpper(line)) //преобразуем строку в единый формат
 	rs := []rune(line)                             //приводим к типу []rune
 	if len(rs)%2 != 0 {                            //если длина нечетная добавляем пробел в конец
 		rs = append(rs, ' ')
@@ -68,26 +67,22 @@ func randMatrix() [][]rune {
 	if len(a) != rows*cols { //проверяем размерность
 		panic("Неверное количество символов в алфавите")
 	}
-
 	rand.Shuffle(len(a), func(i, j int) { //перемешиваем алфавит с помощью свапа каждого символа с рандомным
 		a[i], a[j] = a[j], a[i]
 	})
-
 	m := make([][]rune, rows) //создаем матрицу
 	for i := range m {
 		m[i] = make([]rune, cols)
 		copy(m[i], a[i*cols:(i+1)*cols]) //копируем символ из алфавита в матрицу
 	}
-
 	return m
 }
 
 // обработчик шифровщика
 func handlerCoder(bigrams [][]rune, m1, m2 [][]rune) [][]rune {
-
 	out := make([][]rune, 0, len(bigrams))
 	for _, bg := range bigrams { //берем каждую биграмму
-		c := coder(bg, m1, m2)       //отправляем в коде
+		c := coder(bg, m1, m2)       //отправляем в кодер
 		out = append(out, c)         //добавляем в результирующий массив
 		fmt.Printf("%q ", string(c)) //выводим
 	}
@@ -97,7 +92,7 @@ func handlerCoder(bigrams [][]rune, m1, m2 [][]rune) [][]rune {
 
 // кодер рун
 func coder(bigram []rune, m1, m2 [][]rune) []rune {
-	var i1, j1 int = -1, -1 //объясвляем переменные для памяти позиций
+	var i1, j1 int = -1, -1 //объявляем переменные для памяти позиций
 	var i2, j2 int = -1, -1
 	out := make([]rune, 2)
 	for i := 0; i < rows; i++ {
